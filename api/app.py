@@ -30,7 +30,7 @@ async def startup_event():
     global MODEL, TOKENIZER, AGENT
     print("Inicializando API...")
     # TODO: Cargar el modelo de la Fase 1 aquí
-    # MODEL, TOKENIZER = load_rlm_model()
+    MODEL, TOKENIZER = load_rlm_model()
     # if MODEL:
     #      AGENT = ReActAgent(MODEL, TOKENIZER)
     print("Modelos cargados (PLACEHOLDER).")
@@ -58,8 +58,7 @@ async def phase1_endpoint(request: QueryRequest):
         return {"response": "ERROR: Modelo de Fase 1 no cargado.", "details": {"status": "todo"}}
     
     # TODO: Usar la función de inferencia de Fase 1
-    # response_text = generate_reasoning(request.prompt, MODEL, TOKENIZER)
-    response_text = f"Placeholder Fase 1 para: {request.prompt}" # TODO Remove
+    response_text = generate_reasoning(request.prompt, MODEL, TOKENIZER)
     return {
         "response": response_text, "trace": [{"step": 0, "content": response_text}], "details": {"stage": "sft_grpo"}
     }
