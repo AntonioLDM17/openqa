@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- IMPORTACIONES DE LOS MÓDULOS DE LOS ALUMNOS ---
 # TODO: Descomentar a medida que se implementen las fases
-# from rlm.inference import load_rlm_model, generate_reasoning
+from rlm.inference import load_rlm_model, generate_reasoning
 # from tool_use.tool_handler import parse_and_execute_tool_call
 # from rag.rag_engine import retrieve_context, format_rag_prompt
 # from react.agent import ReActAgent
@@ -30,7 +30,7 @@ async def startup_event():
     global MODEL, TOKENIZER, AGENT
     print("Inicializando API...")
     # TODO: Cargar el modelo de la Fase 1 aquí
-    # MODEL, TOKENIZER = load_rlm_model()
+    MODEL, TOKENIZER = load_rlm_model()
     # if MODEL:
     #      AGENT = ReActAgent(MODEL, TOKENIZER)
     print("Modelos cargados (PLACEHOLDER).")
@@ -58,10 +58,11 @@ async def phase1_endpoint(request: QueryRequest):
         return {"response": "ERROR: Modelo de Fase 1 no cargado.", "details": {"status": "todo"}}
     
     # TODO: Usar la función de inferencia de Fase 1
-    # response_text = generate_reasoning(request.prompt, MODEL, TOKENIZER)
-    response_text = f"Placeholder Fase 1 para: {request.prompt}" # TODO Remove
+    response_text = generate_reasoning(request.prompt, MODEL, TOKENIZER)
+    print("Response Text:", response_text)
+    reasoning, response = response_text.split("ASSISTANT:")[1].split("Final answer:")
     return {
-        "response": response_text, "trace": [{"step": 0, "content": response_text}], "details": {"stage": "sft_grpo"}
+        "response": response, "trace": [{"step": 0, "content": reasoning}], "details": {"stage": "sft_grpo"}
     }
 
 
@@ -120,4 +121,4 @@ async def phase4_endpoint(request: QueryRequest):
 
 if __name__ == "__main__":
     # Para correr localmente: python api/app.py
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8045)
