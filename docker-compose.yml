@@ -20,6 +20,7 @@ services:
     # Volume mounts
     volumes:
       - ./rlm:/app/rlm
+      - ./api:/app/api
     
     # Working directory
     working_dir: /app
@@ -27,8 +28,8 @@ services:
     # Keep container running
     stdin_open: true
     tty: true
-    # ports:
-    #   - "8888:8888"
+    ports:
+      - "8045:8045"
     command: bash
     # command: jupyter notebook --ip=0.0.0.0 --no-browser --allow-root
     # Network mode (optional, can be removed if not needed)
