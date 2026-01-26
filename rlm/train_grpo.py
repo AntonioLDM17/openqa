@@ -15,8 +15,16 @@ MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 SFT_ADAPTER_PATH = "./weights/sft_lora_gsm8k" # Ruta al modelo de la Fase 1, Parte 1
 OUTPUT_DIR = "./weights/final_rlm_lora"
 """
-SFT_ADAPTER_PATH = "/app/weights/sft_lora_gsm8k"
-OUTPUT_DIR = "/app/weights/final_rlm_lora"
+def resolve_adapter_path(primary, fallback):
+    if os.path.exists(os.path.join(primary, "adapter_config.json")):
+        return primary
+    if os.path.exists(os.path.join(fallback, "adapter_config.json")):
+        return fallback
+    raise FileNotFoundError(f"No adapter_config.json in {primary} nor {fallback}")
+
+SFT_ADAPTER_PATH = resolve_adapter_path("/app/rlm/weights/sft_lora_gsm8k",
+                                       "/app/weights/sft_lora_gsm8k")
+OUTPUT_DIR = "/app/rlm/weights/final_rlm_lora"
 
 GRPO_GROUP_SIZE = 4 # N respuestas por pregunta
 
@@ -42,8 +50,8 @@ BATCH_SIZE = 1               # IMPORTANTE: GRPO suele ir B=1 y grupo N
 LR = 1e-5
 GRAD_CLIP = 1.0
 GRAD_ACCUM_STEPS = 1
-LOG_EVERY = 1 # 25
-MAX_STEPS = 20 #500              # para acotar; pon None si quieres recorrer todo
+LOG_EVERY = 25 # 25
+MAX_STEPS = 500 #500              # para acotar; pon None si quieres recorrer todo
 SEED = 42
 
 SYSTEM_PROMPT = ""  # puedes dejarlo vacío o meter un system prompt fijo

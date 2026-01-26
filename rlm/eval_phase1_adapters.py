@@ -118,15 +118,15 @@ def main():
     parser.add_argument("--max_new_tokens", type=int, default=256)
 
     # Paths por defecto (docker-friendly)
-    parser.add_argument("--sft_path", type=str, default="/app/weights/sft_lora_gsm8k")
-    parser.add_argument("--grpo_path", type=str, default="/app/weights/final_rlm_lora")
+    parser.add_argument("--sft_path", type=str, default="/app/rlm/weights/sft_lora_gsm8k")
+    parser.add_argument("--grpo_path", type=str, default="/app/rlm/weights/final_rlm_lora")
 
-    # Fallbacks típicos si entrenaste/guardaste en /app/rlm/weights
+    # Fallbacks típicos si entrenaste/guardaste en /app/weights
     parser.add_argument(
-        "--sft_fallback", type=str, default="/app/rlm/weights/sft_lora_gsm8k"
+        "--sft_fallback", type=str, default="/app/weights/sft_lora_gsm8k"
     )
     parser.add_argument(
-        "--grpo_fallback", type=str, default="/app/rlm/weights/final_rlm_lora"
+        "--grpo_fallback", type=str, default="/app/weights/final_rlm_lora"
     )
 
     args = parser.parse_args()
