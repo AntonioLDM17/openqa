@@ -50,8 +50,7 @@ ENV PATH=/usr/local/cuda/bin:${PATH}
 
 RUN pip install git+https://github.com/huggingface/diffusers
 RUN pip install accelerate wand
-
-RUN pip install -r app/requirements.txt
+RUN pip install -r /app/requirements.txt
 
 # accelerate configuration saved at $HOME/.cache/huggingface/accelerate/default_config.yaml
 CMD ["bash"]
