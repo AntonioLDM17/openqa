@@ -21,7 +21,9 @@ services:
     volumes:
       - ./rlm:/app/rlm
       - ./api:/app/api
-    
+      - ./weights:/app/weights # Path to store model weights
+      # To avoid re-downloading models, cache huggingface models
+      - ./.cache/huggingface:/app/.cache/huggingface
     # Working directory
     working_dir: /app
     
