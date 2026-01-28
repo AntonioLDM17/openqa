@@ -2,12 +2,14 @@
 
 import os
 
+import numexpr as ne
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.tools import tool
 from langchain_openai import AzureChatOpenAI
+from tavily import TavilyClient
 
-load_dotenv()  # Intenta cargar desde el directorio de trabajo actual
+load_dotenv()
 
 """
 otras opciones para agentes:
@@ -24,11 +26,10 @@ otras opciones para agentes:
 def calculator(expression: str) -> str:
     """Evalúa una expresión matemática simple. Útil para realizar cálculos aritméticos."""
     try:
-        # Idealmente, usar una librería segura como numexpr o asteval.
-        return str(eval(expression))
+        result = ne.evaluate(expression)
+        return str(result)
     except Exception as e:
         return f"Error calculando: {e}"
-
 
 @tool
 def simulated_search(query: str) -> str:
@@ -43,9 +44,31 @@ def simulated_search(query: str) -> str:
     else:
         return "No se encontraron resultados relevantes en el buscador simulado."
 
+@tool
+def internet_search(query: str) -> str:
+    """Busca información en internet usando Tavily API. SIEMPRE usa esta herramienta para buscar información sobre personas, lugares, tecnología o cualquier dato factual. Input: la consulta de búsqueda."""
+    try:
+        tavily_api_key = os.getenv("TAVILY_API_KEY")
+        if not tavily_api_key:
+            return "Error: TAVILY_API_KEY no está configurada en las variables de entorno."
+        
+        client = TavilyClient(api_key=tavily_api_key)
+        response = client.search(query=query, max_results=1)
+        
+        if response and "results" in response and len(response["results"]) > 0:
+            first_result = response["results"][0]
+            title = first_result.get("title", "")
+            content = first_result.get("content", "")
+            url = first_result.get("url", "")
+            return f"{title}\n{content}\nFuente: {url}"
+        else:
+            return "No se encontraron resultados relevantes en la búsqueda."
+    except Exception as e:
+        return f"Error en la búsqueda: {e}"
+
 
 # Lista de herramientas disponibles
-tools = [calculator, simulated_search]
+tools = [calculator, simulated_search, internet_search]
 
 def get_azure_model():
     """Crea y retorna el modelo de Azure OpenAI con validación de credenciales."""
