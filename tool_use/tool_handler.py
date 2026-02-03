@@ -2,7 +2,7 @@ import json
 import re
 from dotenv import load_dotenv
 from langchain_community.chat_models import ChatOllama
-from tools import calculator, simulated_search, internet_search
+from .tools import calculator, internet_search, company_fundamentals, company_events, stock_price
 
 load_dotenv()
 
@@ -21,20 +21,7 @@ TOOL_SCHEMAS = {
             "required": ["expression"]
         }
     },
-    # "simulated_search": {
-    #     "name": "simulated_search",
-    #     "description": "Busca información en una base de datos. SIEMPRE usa esta herramienta para buscar información sobre personas, lugares, tecnología o cualquier dato factual.",
-    #     "parameters": {
-    #         "type": "object",
-    #         "properties": {
-    #             "query": {
-    #                 "type": "string",
-    #                 "description": "La consulta de búsqueda"
-    #             }
-    #         },
-    #         "required": ["query"]
-    #     }
-    # },
+
     "internet_search": {
         "name": "internet_search",
         "description": "Busca información en internet usando Tavily API. Usa esta herramienta para información actualizada o no disponible en la base de datos.",
@@ -47,6 +34,51 @@ TOOL_SCHEMAS = {
                 }
             },
             "required": ["query"]
+        }
+    },
+
+    "company_fundamentals": {
+        "name": "company_fundamentals",
+        "description": "Obtiene datos económicos y financieros básicos de una empresa pública (ingresos, beneficios, activos, pasivos) usando información oficial.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticker": {
+                    "type": "string",
+                    "description": "Ticker bursátil de la empresa (ej: AAPL, TSLA, MSFT)"
+                }
+            },
+            "required": ["ticker"]
+        }
+    },
+
+    "company_events": {
+        "name": "company_events",
+        "description": "Obtiene eventos recientes y noticias materiales de una empresa (earnings, adquisiciones, cambios relevantes) a partir de filings 8-K de SEC EDGAR.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticker": {
+                    "type": "string",
+                    "description": "Ticker bursátil de la empresa (ej: AAPL, TSLA, MSFT)"
+                }
+            },
+            "required": ["ticker"]
+        }
+    },
+
+    "stock_price": {
+        "name": "stock_price",
+        "description": "Obtiene el precio actual de una acción y su variación reciente en el mercado.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticker": {
+                    "type": "string",
+                    "description": "Ticker bursátil de la acción (ej: AAPL, TSLA, MSFT)"
+                }
+            },
+            "required": ["ticker"]
         }
     }
 }
@@ -83,8 +115,10 @@ def parse_and_execute_tool_call(model_output):
     
     available_tools = {
         "calculator": calculator,
-        # "simulated_search": simulated_search,
-        "internet_search": internet_search
+        "internet_search": internet_search,
+        "company_fundamentals": company_fundamentals,
+        "company_events": company_events,
+        "stock_price": stock_price
     }
     
     try:
@@ -129,7 +163,7 @@ def get_model():
         temperature=0
     )
 
-def run_agent_loop(user_question, max_iterations=5, verbose=True):
+def run_agent_loop(model, user_question, max_iterations=5, verbose=True):
     """
     Ejecuta el loop ReAct: Model → Tool → Model → Answer
     
@@ -141,7 +175,7 @@ def run_agent_loop(user_question, max_iterations=5, verbose=True):
     Returns:
         La respuesta final del modelo
     """
-    model = get_model()
+    # model = get_model()
     
     system_prompt = SYSTEM_PROMPT.format(tools_description=get_tools_description())
     

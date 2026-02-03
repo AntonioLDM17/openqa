@@ -1,12 +1,12 @@
 # --- Implementación de las herramientas ---
 
 import os
+import requests
+import json
 
 import numexpr as ne
 from dotenv import load_dotenv
-from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain_openai import AzureChatOpenAI
 from tavily import TavilyClient
 
 load_dotenv()
@@ -32,19 +32,6 @@ def calculator(expression: str) -> str:
         return f"Error calculando: {e}"
 
 @tool
-def simulated_search(query: str) -> str:
-    """Busca información en una base de datos. SIEMPRE usa esta herramienta para buscar información sobre personas, lugares, tecnología o cualquier dato factual. Input: la consulta de búsqueda."""
-    query_lower = query.lower()
-    if "hermano" in query_lower and "miguel" in query_lower:
-        return "Miguel tiene un hermano llamado Juan."
-    elif "capital" in query_lower and "francia" in query_lower:
-        return "La capital de Francia es París."
-    elif "python" in query_lower:
-        return "Python es un lenguaje de programación de alto nivel."
-    else:
-        return "No se encontraron resultados relevantes en el buscador simulado."
-
-@tool
 def internet_search(query: str) -> str:
     """Busca información en internet usando Tavily API. SIEMPRE usa esta herramienta para buscar información sobre personas, lugares, tecnología o cualquier dato factual. Input: la consulta de búsqueda."""
     try:
@@ -66,66 +53,142 @@ def internet_search(query: str) -> str:
     except Exception as e:
         return f"Error en la búsqueda: {e}"
 
+@tool
+def company_fundamentals(ticker: str) -> str:
+    """
+    Obtiene datos financieros básicos de una empresa pública (ingresos, beneficios, activos)
+    usando datos oficiales de SEC EDGAR.
 
-# Lista de herramientas disponibles
-tools = [calculator, simulated_search, internet_search]
+    Input: ticker bursátil (ej. AAPL)
+    """
+    try:
+        ticker = ticker.upper()
 
-def get_azure_model():
-    """Crea y retorna el modelo de Azure OpenAI con validación de credenciales."""
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    api_key = os.getenv("AZURE_OPENAI_API_KEY")
-    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4.1")
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
-    
-    return AzureChatOpenAI(
-        azure_endpoint=endpoint,
-        azure_deployment=deployment,
-        api_version=api_version,
-        api_key=api_key,
-    )
+        # Map ticker → CIK
+        cik_url = "https://www.sec.gov/files/company_tickers.json"
+        headers = {"User-Agent": "LLM-Agent/1.0 (contact@example.com)"}
+        cik_data = requests.get(cik_url, headers=headers).json()
 
+        cik = None
+        for item in cik_data.values():
+            if item["ticker"] == ticker:
+                cik = str(item["cik_str"]).zfill(10)
+                break
 
-SYSTEM_PROMPT = """Eres un asistente que SIEMPRE usa las herramientas disponibles para responder preguntas.
+        if not cik:
+            return f"No se pudo encontrar el CIK para {ticker}"
 
-REGLAS IMPORTANTES:
-1. Para CUALQUIER pregunta sobre personas, lugares, datos o hechos, USA la herramienta simulated_search PRIMERO.
-2. Para cálculos matemáticos, USA la herramienta calculator.
-3. NUNCA respondas basándote en tu conocimiento propio sin antes consultar las herramientas.
-4. Si una herramienta no devuelve resultados, entonces puedes indicar que no encontraste la información."""
+        facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+        facts = requests.get(facts_url, headers=headers).json()
 
+        us_gaap = facts.get("facts", {}).get("us-gaap", {})
 
-def main():
-    """Ejemplo de uso de un agente con herramientas usando LangChain y Azure OpenAI."""
-    
-    # Crear el modelo de Azure OpenAI
-    azure_model = get_azure_model()
-    
-    # Crear el agente con el modelo de Azure y system prompt
-    agent = create_agent(
-        model=azure_model,
-        tools=tools,
-        system_prompt=SYSTEM_PROMPT
-    )
-    
-    # # Ejemplo 1: Pregunta que requiere cálculo
-    print("=" * 60)
-    print("Ejemplo 1: Cálculo matemático")
-    print("=" * 60)
-    result = agent.invoke({
-        "messages": [{"role": "user", "content": "¿Cuánto es 25 * 4 + 100?"}]
-    })
-    print(f"Respuesta: {result['messages'][-1].content}\n")
-    
-    # Ejemplo 2: Pregunta que requiere búsqueda
-    print("=" * 60)
-    print("Ejemplo 2: Búsqueda de información")
-    print("=" * 60)
-    result = agent.invoke({
-        "messages": [{"role": "user", "content": "¿Quién es el hermano de Miguel?"}]
-    })
-    print(f"Respuesta: {result['messages'][-1].content}\n")
-    
+        def latest_value(field):
+            data = us_gaap.get(field, {}).get("units", {}).get("USD", [])
+            return data[-1]["val"] if data else "No disponible"
+
+        result = {
+            "empresa": facts.get("entityName", ticker),
+            "revenue": latest_value("Revenues"),
+            "net_income": latest_value("NetIncomeLoss"),
+            "total_assets": latest_value("Assets"),
+            "total_liabilities": latest_value("Liabilities")
+        }
+
+        return json.dumps(result, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return f"Error obteniendo fundamentales de {ticker}: {e}"
 
 
-if __name__ == "__main__":
-    main()
+@tool
+def company_events(ticker: str) -> str:
+    """
+    Obtiene eventos recientes y noticias materiales de una empresa
+    usando filings 8-K de SEC EDGAR.
+    Input: ticker bursátil (ej. AAPL)
+    """
+    try:
+        ticker = ticker.upper()
+        headers = {"User-Agent": "LLM-Agent/1.0 (contact@example.com)"}
+
+        # 1. Ticker → CIK
+        cik_url = "https://www.sec.gov/files/company_tickers.json"
+        cik_data = requests.get(cik_url, headers=headers).json()
+
+        cik = None
+        for item in cik_data.values():
+            if item["ticker"] == ticker:
+                cik = str(item["cik_str"]).zfill(10)
+                break
+
+        if not cik:
+            return f"No se pudo encontrar el CIK para {ticker}"
+
+        # 2. Obtener filings recientes
+        submissions_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+        submissions = requests.get(submissions_url, headers=headers).json()
+
+        recent = submissions.get("filings", {}).get("recent", {})
+        forms = recent.get("form", [])
+        dates = recent.get("filingDate", [])
+        descriptions = recent.get("primaryDocDescription", [])
+
+        events = []
+        for form, date, desc in zip(forms, dates, descriptions):
+            if form == "8-K":
+                events.append({
+                    "date": date,
+                    "type": "8-K",
+                    "description": desc or "Evento material reportado"
+                })
+
+        if not events:
+            return f"No se encontraron eventos recientes (8-K) para {ticker}"
+
+        return json.dumps({
+            "company": submissions.get("name", ticker),
+            "events": events[:5]  # últimos 5 eventos
+        }, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return f"Error obteniendo eventos de {ticker}: {e}"
+
+@tool
+def stock_price(ticker: str) -> str:
+    """
+    Obtiene el precio actual de una acción usando Alpha Vantage (free tier).
+    """
+    try:
+        import os, requests, json
+
+        api_key = os.getenv("ALPHAVANTAGE_API_KEY")
+        if not api_key:
+            return "Error: ALPHAVANTAGE_API_KEY no configurada."
+
+        ticker = ticker.upper()
+        url = (
+            "https://www.alphavantage.co/query"
+            f"?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+        )
+
+        r = requests.get(url, timeout=10)
+        data = r.json()
+
+        quote = data.get("Global Quote", {})
+        if not quote:
+            return f"No se encontró información de mercado para {ticker}"
+
+        result = {
+            "ticker": ticker,
+            "price": quote.get("05. price"),
+            "change": quote.get("09. change"),
+            "change_percent": quote.get("10. change percent")
+        }
+
+        return json.dumps(result, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        return f"Error obteniendo precio de {ticker}: {e}"
+
+

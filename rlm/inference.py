@@ -6,7 +6,7 @@ from peft import PeftModel
 MODEL_PATH = "./weights/sft_lora_gsm8k"
 BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
-def load_rlm_model():
+def load_rlm_model(base_model: str = BASE_MODEL, sft_path: str = MODEL_PATH):
     # TODO: Cargar el modelo base y el adaptador LoRA
     print(f"Cargando modelo RLM desde {MODEL_PATH}...")
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
