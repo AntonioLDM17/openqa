@@ -1,8 +1,9 @@
 import json
 import re
 from dotenv import load_dotenv
-from langchain_community.chat_models import ChatOllama
+# from langchain_community.chat_models import ChatOllama
 from .tools import calculator, internet_search, company_fundamentals, company_events, stock_price
+from rlm.inference import generate_reasoning
 
 load_dotenv()
 
@@ -91,6 +92,7 @@ Herramientas disponibles:
 INSTRUCCIONES IMPORTANTES:
 Deberás decidir si quieres llamar a una herramienta. En tal caso, tu llamada deberá estar formateada de la siguiente forma:
 {{"nombre": "nombre_de_la_herramienta", "argumentos": {{"parametro": "valor"}}}}
+El formato es estrictamente JSON, con los campos "nombre" y "argumentos". No uses otro formato.
 
 Tras la ejecución de la herramienta, recibirás el resultado de la llamada a la herramienta.
 """
@@ -156,14 +158,14 @@ def parse_and_execute_tool_call(model_output):
     except Exception as e:
         return f"Error ejecutando herramienta: {str(e)}"
 
-def get_model():
-    """Crea y retorna el modelo Ollama local."""
-    return ChatOllama(
-        model="llama3",
-        temperature=0
-    )
+# def get_model():
+#     """Crea y retorna el modelo Ollama local."""
+#     return ChatOllama(
+#         model="llama3",
+#         temperature=0
+#     )
 
-def run_agent_loop(model, user_question, max_iterations=5, verbose=True):
+def run_agent_loop(model, user_question, tokenizer, max_iterations=5, verbose=True):
     """
     Ejecuta el loop ReAct: Model → Tool → Model → Answer
     
@@ -190,8 +192,7 @@ def run_agent_loop(model, user_question, max_iterations=5, verbose=True):
             print(f"Iteración {iteration + 1}")
             print(f"{'='*60}")
         
-        response = model.invoke(conversation_history)
-        model_output = response.content
+        model_output = generate_reasoning(conversation_history, model, tokenizer).split("ASSISTANT:")[-1].strip()
         
         if verbose:
             print(f"\n🤖 Modelo dice:\n{model_output}")
@@ -215,8 +216,8 @@ def run_agent_loop(model, user_question, max_iterations=5, verbose=True):
     if verbose:
         print(f"\n⚠️ Alcanzado el máximo de iteraciones ({max_iterations})")
     
-    final_response = model.invoke(conversation_history)
-    return final_response.content
+    final_response = generate_reasoning(conversation_history, model, tokenizer)
+    return final_response
 
 if __name__ == "__main__":
     print("\n" + "="*60)

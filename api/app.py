@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # --- IMPORTACIONES DE LOS MÓDULOS DE LOS ALUMNOS ---
 # TODO: Descomentar a medida que se implementen las fases
 from rlm.inference import load_rlm_model, generate_reasoning
-# from tool_use.tool_handler import parse_and_execute_tool_call
+from tool_use.tool_handler import parse_and_execute_tool_call, run_agent_loop
 # from rag.rag_engine import retrieve_context, format_rag_prompt
 # from react.agent import ReActAgent
 
@@ -75,12 +75,13 @@ async def phase2_endpoint(request: QueryRequest):
     """
     # 1. Simular generación del modelo (o usar el real si ya sabe usar tools)
     # model_output_simulated = '''... Thought: Necesito la calculadora. Action: '''
-    
+    tool_result = run_agent_loop(MODEL, request.prompt, TOKENIZER)
+
     # 2. Usar el handler de Fase 2
     # TODO: Descomentar
     # tool_result = parse_and_execute_tool_call(model_output_simulated)
 
-    tool_result = "Placeholder: Resultado de herramienta (Fase 2) no implementado."
+    # tool_result = "Placeholder: Resultado de herramienta (Fase 2) no implementado."
     
     if tool_result:
         return {"response": f"Tool execution result: {tool_result}", "details": {"tool_called": True}}
