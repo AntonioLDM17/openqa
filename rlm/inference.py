@@ -3,10 +3,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
 # Ruta a tu modelo final de fase 1
-MODEL_PATH = "./weights/sft_lora_gsm8k"
+MODEL_PATH = "./rlm/weights/sft_lora_gsm8k"
 BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
-def load_rlm_model():
+def load_rlm_model(base_model: str = BASE_MODEL, sft_path: str = MODEL_PATH):
     # TODO: Cargar el modelo base y el adaptador LoRA
     print(f"Cargando modelo RLM desde {MODEL_PATH}...")
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
@@ -24,7 +24,7 @@ def generate_reasoning(prompt, model, tokenizer):
     ASSISTANT:"""
     input_ids = tokenizer(text, return_tensors="pt").to(model.device)
     outputs = model.generate(**input_ids, max_new_tokens=512, do_sample=False, pad_token_id=tokenizer.eos_token_id)
-    response = tokenizer.decode(outputs[0])
+    response = tokenizer.decode(outputs[0]).replace("<|im_end|>", "")
     return response
 
 if __name__ == "__main__":
