@@ -192,7 +192,7 @@ def run_agent_loop(model, user_question, tokenizer, max_iterations=5, verbose=Tr
             print(f"Iteración {iteration + 1}")
             print(f"{'='*60}")
         
-        model_output = generate_reasoning(conversation_history, model, tokenizer).split("ASSISTANT:")[-1].strip()
+        model_output = generate_reasoning(conversation_history, model, tokenizer).split("ASSISTANT:")[-1].strip().replace("<|endoftext|>", "")
         
         if verbose:
             print(f"\n🤖 Modelo dice:\n{model_output}")
@@ -202,7 +202,8 @@ def run_agent_loop(model, user_question, tokenizer, max_iterations=5, verbose=Tr
         if tool_result is None:
             if verbose:
                 print(f"\n✅ Respuesta final (sin herramienta)")
-            return model_output
+            conversation_history.append({"role": "assistant", "content": model_output})
+            return conversation_history
         
         if verbose:
             print(f"\n🔧 Resultado de herramienta:\n{tool_result}")
@@ -217,7 +218,8 @@ def run_agent_loop(model, user_question, tokenizer, max_iterations=5, verbose=Tr
         print(f"\n⚠️ Alcanzado el máximo de iteraciones ({max_iterations})")
     
     final_response = generate_reasoning(conversation_history, model, tokenizer)
-    return final_response
+    conversation_history.append({"role": "assistant", "content": final_response})
+    return conversation_history
 
 if __name__ == "__main__":
     print("\n" + "="*60)

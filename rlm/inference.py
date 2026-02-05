@@ -24,7 +24,7 @@ def generate_reasoning(prompt, model, tokenizer):
     ASSISTANT:"""
     input_ids = tokenizer(text, return_tensors="pt").to(model.device)
     outputs = model.generate(**input_ids, max_new_tokens=512, do_sample=False, pad_token_id=tokenizer.eos_token_id)
-    response = tokenizer.decode(outputs[0]).replace("<|endoftext|>", "")
+    response = tokenizer.decode(outputs[0]).replace("<|im_end|>", "")
     return response
 
 if __name__ == "__main__":

@@ -84,7 +84,7 @@ async def phase2_endpoint(request: QueryRequest):
     # tool_result = "Placeholder: Resultado de herramienta (Fase 2) no implementado."
     
     if tool_result:
-        return {"response": f"Tool execution result: {tool_result}", "details": {"tool_called": True}}
+        return {"response": f"Tool execution result: {tool_result[-1]['content'].replace('</s>', '')}", "details": {"tool_called": True}, "trace": tool_result[1:]}
     else:
         return {"response": "No tool call detected or needed.", "details": {"tool_called": False}}
 
