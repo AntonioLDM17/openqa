@@ -107,11 +107,12 @@ def get_tools_description():
 
 def parse_and_execute_tool_call(model_output):
     """
-    Intenta detectar y ejecutar una llamada a herramienta en el output del modelo.
+    Intenta detectar y ejecutar múltiples llamadas a herramientas en el output del modelo.
     Busca el formato JSON: {"nombre": "...", "argumentos": {...}}
     
     Retorna:
-    - El resultado de la herramienta (str) si hubo una llamada exitosa.
+    - Un diccionario con los resultados de todas las herramientas ejecutadas si hubo llamadas exitosas.
+      Formato: {"tool_calls": [{"tool": "nombre", "result": "..."}], "combined_result": "..."}
     - None si no se detectó ninguna llamada válida.
     """
     
@@ -123,40 +124,93 @@ def parse_and_execute_tool_call(model_output):
         "stock_price": stock_price
     }
     
+    tool_results = []
+    
     try:
-        # Buscar JSON con campos "nombre" y "argumentos"
-        # Usar un patrón más robusto que maneje JSON anidado
-        json_match = re.search(r'\{[^{}]*"nombre"[^{}]*"argumentos"[^{}]*\{[^{}]*\}[^{}]*\}', model_output, re.DOTALL)
+        # Buscar todas las ocurrencias de JSON con campos "nombre" y "argumentos"
+        # Patrón más robusto que maneje JSON anidado
+        pattern = r'\{[^{}]*"nombre"[^{}]*"argumentos"[^{}]*\{[^{}]*\}[^{}]*\}'
+        json_matches = list(re.finditer(pattern, model_output, re.DOTALL))
         
         # Si no encuentra con argumentos anidados, buscar formato simple
-        if not json_match:
-            json_match = re.search(r'\{[^{}]*"nombre"[^{}]*"argumentos"[^{}]*\}', model_output, re.DOTALL)
+        if not json_matches:
+            pattern = r'\{[^{}]*"nombre"[^{}]*"argumentos"[^{}]*\}'
+            json_matches = list(re.finditer(pattern, model_output, re.DOTALL))
         
-        if not json_match:
+        if not json_matches:
             return None
         
-        json_str = json_match.group(0).strip()
-        tool_call = json.loads(json_str)
+        # Procesar cada llamada a herramienta encontrada
+        for match in json_matches:
+            json_str = match.group(0).strip()
+            
+            try:
+                tool_call = json.loads(json_str)
+                
+                # Usar los nombres en español: "nombre" y "argumentos"
+                tool_name = tool_call.get("nombre")
+                arguments = tool_call.get("argumentos", {})
+                
+                if not tool_name:
+                    tool_results.append({
+                        "tool": "unknown",
+                        "result": "Error: No se especificó el nombre de la herramienta.",
+                        "success": False
+                    })
+                    continue
+                
+                if tool_name not in available_tools:
+                    tool_results.append({
+                        "tool": tool_name,
+                        "result": f"Error: Herramienta '{tool_name}' no encontrada.",
+                        "success": False
+                    })
+                    continue
+                
+                # Ejecutar la herramienta
+                tool_function = available_tools[tool_name]
+                result = tool_function.invoke(arguments)
+                
+                tool_results.append({
+                    "tool": tool_name,
+                    "arguments": arguments,
+                    "result": result,
+                    "success": True
+                })
+                
+            except json.JSONDecodeError:
+                tool_results.append({
+                    "tool": "unknown",
+                    "result": f"Error: JSON inválido en la llamada a herramienta.",
+                    "success": False
+                })
+            except Exception as e:
+                tool_results.append({
+                    "tool": tool_name if 'tool_name' in locals() else "unknown",
+                    "result": f"Error ejecutando herramienta: {str(e)}",
+                    "success": False
+                })
         
-        # Usar los nombres en español: "nombre" y "argumentos"
-        tool_name = tool_call.get("nombre")
-        arguments = tool_call.get("argumentos", {})
+        # Si no se ejecutó ninguna herramienta exitosamente, retornar None
+        if not tool_results:
+            return None
         
-        if not tool_name:
-            return "Error: No se especificó el nombre de la herramienta."
+        # Crear un resultado combinado
+        combined_parts = []
+        for i, tr in enumerate(tool_results, 1):
+            if len(tool_results) > 1:
+                combined_parts.append(f"Herramienta {i} ({tr['tool']}): {tr['result']}")
+            else:
+                combined_parts.append(str(tr['result']))
         
-        if tool_name not in available_tools:
-            return f"Error: Herramienta '{tool_name}' no encontrada."
+        combined_result = "\n\n".join(combined_parts)
         
-        tool_function = available_tools[tool_name]
-        result = tool_function.invoke(arguments)
+        # Retornar formato compatible con el código existente (string)
+        # pero también incluir información estructurada
+        return combined_result
         
-        return result
-        
-    except json.JSONDecodeError as e:
-        return None
     except Exception as e:
-        return f"Error ejecutando herramienta: {str(e)}"
+        return f"Error general procesando herramientas: {str(e)}"
 
 # def get_model():
 #     """Crea y retorna el modelo Ollama local."""
@@ -177,7 +231,21 @@ def run_agent_loop(model, user_question, tokenizer, max_iterations=5, verbose=Tr
     Returns:
         La respuesta final del modelo
     """
-    # model = get_model()
+    def format_conversation_to_prompt(conversation_history):
+        """Convierte la conversation_history (lista de dicts) en un string formateado."""
+        text_parts = []
+        for message in conversation_history:
+            role = message["role"]
+            content = message["content"]
+            
+            if role == "system":
+                text_parts.append(f"SYSTEM: {content}")
+            elif role == "user":
+                text_parts.append(f"USER: {content}")
+            elif role == "assistant":
+                text_parts.append(f"ASSISTANT: {content}")
+        
+        return "\n".join(text_parts)
     
     system_prompt = SYSTEM_PROMPT.format(tools_description=get_tools_description())
     
@@ -192,7 +260,9 @@ def run_agent_loop(model, user_question, tokenizer, max_iterations=5, verbose=Tr
             print(f"Iteración {iteration + 1}")
             print(f"{'='*60}")
         
-        model_output = generate_reasoning(conversation_history, model, tokenizer).split("ASSISTANT:")[-1].strip().replace("<|endoftext|>", "")
+        # Convertir conversation_history a string antes de pasarlo a generate_reasoning
+        prompt = format_conversation_to_prompt(conversation_history)
+        model_output = generate_reasoning(prompt, model, tokenizer).split("ASSISTANT:")[-1].strip().replace("<|endoftext|>", "")
         
         if verbose:
             print(f"\n🤖 Modelo dice:\n{model_output}")
@@ -217,7 +287,9 @@ def run_agent_loop(model, user_question, tokenizer, max_iterations=5, verbose=Tr
     if verbose:
         print(f"\n⚠️ Alcanzado el máximo de iteraciones ({max_iterations})")
     
-    final_response = generate_reasoning(conversation_history, model, tokenizer)
+    # Convertir conversation_history a string antes de pasarlo a generate_reasoning
+    prompt = format_conversation_to_prompt(conversation_history)
+    final_response = generate_reasoning(prompt, model, tokenizer)
     conversation_history.append({"role": "assistant", "content": final_response})
     return conversation_history
 
