@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # TODO: Descomentar a medida que se implementen las fases
 from rlm.inference import load_rlm_model, generate_reasoning
 from tool_use.tool_handler import parse_and_execute_tool_call, run_agent_loop
-# from rag.rag_engine import retrieve_context, format_rag_prompt
+from rag.rag_engine import retrieve_context, format_rag_prompt
 # from react.agent import ReActAgent
 
 app = FastAPI(
@@ -100,12 +100,13 @@ async def phase3_endpoint(request: QueryRequest):
     """
     # TODO: Implementar lógica RAG
     # 1. Recuperar contexto
-    # context_list = retrieve_context(request.prompt)
+    context_list = retrieve_context(request.prompt)
     # 2. Formatear prompt
-    # rag_prompt = format_rag_prompt(request.prompt, context_list)
+    rag_prompt = format_rag_prompt(request.prompt, context_list)
     # 3. Generar con el modelo (opcional, o devolver solo el contexto recuperado para evaluar)
+    response_text = generate_reasoning(rag_prompt, MODEL, TOKENIZER)
     
-    return {"response": "Placeholder Fase 3 (RAG)", "details": {"retrieved_docs": ["doc1_placeholder", "doc2_placeholder"]}}
+    return {"response": response_text, "details": {"retrieved_docs": context_list}}
 
 
 # --- FASE 4: Agente ReAct ---
