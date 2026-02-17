@@ -90,7 +90,8 @@ Herramientas disponibles:
 {tools_description}
 
 INSTRUCCIONES IMPORTANTES:
-Deberás decidir si quieres llamar a una herramienta. En tal caso, tu llamada deberá estar formateada de la siguiente forma:
+Revisa las herramientas disponibles y busca la más adecuada para responder a la pregunta del usuario. Si decides usar una herramienta, hazlo siguiendo el formato JSON especificado. No respondas directamente a la pregunta sin usar herramientas si crees que alguna puede ayudarte a obtener información relevante o realizar cálculos necesarios.
+Debes responder únicamente las preguntas propuestas por el usuario. Deberás decidir si quieres llamar a una herramienta. En tal caso, tu llamada deberá estar formateada de la siguiente forma:
 {{"nombre": "nombre_de_la_herramienta", "argumentos": {{"parametro": "valor"}}}}
 El formato es estrictamente JSON, con los campos "nombre" y "argumentos". No uses otro formato.
 

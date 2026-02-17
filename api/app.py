@@ -60,7 +60,10 @@ async def phase1_endpoint(request: QueryRequest):
     # TODO: Usar la función de inferencia de Fase 1
     response_text = generate_reasoning(request.prompt, MODEL, TOKENIZER)
     print("Response Text:", response_text)
-    reasoning, response = response_text.split("ASSISTANT:")[1].split("Final answer:")
+    try:
+        reasoning, response = response_text.split("ASSISTANT:")[1].split("Final answer:")
+    except:
+        reasoning, response = response_text, response_text
     return {
         "response": response, "trace": [{"step": 0, "content": reasoning}], "details": {"stage": "sft_grpo"}
     }
