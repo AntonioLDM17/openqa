@@ -8,10 +8,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- IMPORTACIONES DE LOS MÓDULOS DE LOS ALUMNOS ---
-# TODO: Descomentar a medida que se implementen las fases
-from rlm.inference import load_rlm_model, generate_reasoning
-from tool_use.tool_handler import parse_and_execute_tool_call, run_agent_loop
-# from rag.rag_engine import retrieve_context, format_rag_prompt
+from src.rlm.inference import load_rlm_model, generate_reasoning
+from src.tool_use.tool_handler import parse_and_execute_tool_call, run_agent_loop
+from src.rag.rag_engine import RAGEngine
 # from react.agent import ReActAgent
 
 app = FastAPI(
@@ -24,13 +23,16 @@ app = FastAPI(
 MODEL = None
 TOKENIZER = None
 AGENT = None
+RAG_ENGINE = None
 
 @app.on_event("startup")
 async def startup_event():
-    global MODEL, TOKENIZER, AGENT
+    global MODEL, TOKENIZER, AGENT, RAG_ENGINE
     print("Inicializando API...")
     # TODO: Cargar el modelo de la Fase 1 aquí
     MODEL, TOKENIZER = load_rlm_model()
+    # Inicializar motor RAG de la Fase 3
+    RAG_ENGINE = RAGEngine()
     # if MODEL:
     #      AGENT = ReActAgent(MODEL, TOKENIZER)
     print("Modelos cargados (PLACEHOLDER).")
@@ -96,16 +98,34 @@ async def phase2_endpoint(request: QueryRequest):
 @app.post("/phase3/rag", response_model=GenericResponse, tags=["Fase 3"])
 async def phase3_endpoint(request: QueryRequest):
     """
-    Evalúa el RAG. Debe recuperar contexto de los documentos y responder.
+    Evalúa el RAG. Recupera contexto de ChromaDB y genera una respuesta.
     """
-    # TODO: Implementar lógica RAG
+    if not RAG_ENGINE:
+        return {"response": "ERROR: Motor RAG no inicializado.", "details": {"status": "error"}}
+
     # 1. Recuperar contexto
-    # context_list = retrieve_context(request.prompt)
-    # 2. Formatear prompt
-    # rag_prompt = format_rag_prompt(request.prompt, context_list)
-    # 3. Generar con el modelo (opcional, o devolver solo el contexto recuperado para evaluar)
-    
-    return {"response": "Placeholder Fase 3 (RAG)", "details": {"retrieved_docs": ["doc1_placeholder", "doc2_placeholder"]}}
+    context_list = RAG_ENGINE.retrieve_context(request.prompt, top_k=5, similarity_threshold=0.75)
+
+    # 2. Formatear prompt con el contexto recuperado
+    rag_prompt = RAG_ENGINE.format_rag_prompt(request.prompt, context_list)
+
+    # 3. Generar respuesta con el modelo
+    if MODEL and TOKENIZER:
+        response_text = generate_reasoning(rag_prompt, MODEL, TOKENIZER)
+        try:
+            response_text = response_text.split("ASSISTANT:")[-1].strip()
+        except:
+            pass
+    else:
+        response_text = "Modelo no disponible. Contexto recuperado correctamente."
+
+    retrieved_docs = [{"text": ctx["text"][:200] + "...", "label": ctx["label"], "distance": ctx["distance"]} for ctx in context_list]
+
+    return {
+        "response": response_text,
+        "trace": [{"step": i, "content": f"[{ctx['label']}] {ctx['text'][:150]}..."} for i, ctx in enumerate(context_list)],
+        "details": {"retrieved_docs": retrieved_docs, "num_results": len(context_list)}
+    }
 
 
 # --- FASE 4: Agente ReAct ---
