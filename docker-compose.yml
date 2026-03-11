@@ -19,9 +19,8 @@ services:
     
     # Volume mounts
     volumes:
-      - ./rlm:/app/rlm
-      - ./api:/app/api
-      - ./tool_use:/app/tool_use
+      - ./src:/app/src
+      - ./app.py:/app/app.py
       - ./weights:/app/weights # Path to store model weights
       - ./.env:/app/.env
       # To avoid re-downloading models, cache huggingface models
