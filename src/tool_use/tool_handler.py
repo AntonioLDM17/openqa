@@ -3,7 +3,7 @@ import re
 from dotenv import load_dotenv
 # from langchain_community.chat_models import ChatOllama
 from .tools import calculator, internet_search, company_fundamentals, company_events, stock_price
-from rlm.inference import generate_reasoning
+from src.rlm.inference import generate_reasoning
 
 load_dotenv()
 
@@ -93,7 +93,7 @@ INSTRUCCIONES IMPORTANTES:
 Revisa las herramientas disponibles y busca la más adecuada para responder a la pregunta del usuario. Si decides usar una herramienta, hazlo siguiendo el formato JSON especificado. No respondas directamente a la pregunta sin usar herramientas si crees que alguna puede ayudarte a obtener información relevante o realizar cálculos necesarios.
 Debes responder únicamente las preguntas propuestas por el usuario. Deberás decidir si quieres llamar a una herramienta. En tal caso, tu llamada deberá estar formateada de la siguiente forma:
 {{"nombre": "nombre_de_la_herramienta", "argumentos": {{"parametro": "valor"}}}}
-El formato es estrictamente JSON, con los campos "nombre" y "argumentos". No uses otro formato.
+El formato es estrictamente JSON, con los campos "nombre" y "argumentos". No uses otro formato. Para los "argumentos" cada parametro debe tener el nombre descrito en el esquema de la herramienta.
 
 Tras la ejecución de la herramienta, recibirás el resultado de la llamada a la herramienta.
 """

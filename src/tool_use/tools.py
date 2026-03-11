@@ -25,11 +25,16 @@ otras opciones para agentes:
 @tool
 def calculator(expression: str) -> str:
     """Evalúa una expresión matemática simple. Útil para realizar cálculos aritméticos."""
+
+    # dejar solo caracteres matemáticos
+    expression = re.sub(r"[^0-9+\-*/().%\s]", "", expression)
+
     try:
         result = ne.evaluate(expression)
         return str(result)
     except Exception as e:
         return f"Error calculando: {e}"
+        # Mejor hacer raise ...
 
 @tool
 def internet_search(query: str) -> str:
