@@ -3,6 +3,7 @@
 import os
 import requests
 import json
+import re
 
 import numexpr as ne
 from dotenv import load_dotenv
