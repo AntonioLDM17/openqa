@@ -8,11 +8,10 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- IMPORTACIONES DE LOS MÓDULOS DE LOS ALUMNOS ---
-# TODO: Descomentar a medida que se implementen las fases
-# from rlm.inference import load_rlm_model, generate_reasoning
-# from tool_use.tool_handler import parse_and_execute_tool_call
-# from rag.rag_engine import retrieve_context, format_rag_prompt
-# from react.agent import ReActAgent
+from src.rlm.inference import load_rlm_model, generate_reasoning
+from src.tool_use.tool_handler import parse_and_execute_tool_call, run_agent_loop
+from src.rag.rag_engine import RAGEngine
+from src.react.agent import ReActAgent
 
 app = FastAPI(
     title="Práctica Master: Modelos Generativos Profundos",
@@ -24,17 +23,19 @@ app = FastAPI(
 MODEL = None
 TOKENIZER = None
 AGENT = None
+RAG_ENGINE = None
 
 @app.on_event("startup")
 async def startup_event():
-    global MODEL, TOKENIZER, AGENT
+    global MODEL, TOKENIZER, AGENT, RAG_ENGINE
     print("Inicializando API...")
     # TODO: Cargar el modelo de la Fase 1 aquí
-    # MODEL, TOKENIZER = load_rlm_model()
-    # if MODEL:
-    #      AGENT = ReActAgent(MODEL, TOKENIZER)
-    print("Modelos cargados (PLACEHOLDER).")
-
+    MODEL, TOKENIZER = load_rlm_model()
+    # Inicializar motor RAG de la Fase 3
+    RAG_ENGINE = RAGEngine()
+    if MODEL:
+        AGENT = ReActAgent(MODEL, TOKENIZER)
+    print("Modelos cargados correctamente.")
 
 # --- Modelos de Pydantic para Request/Response ---
 class QueryRequest(BaseModel):
@@ -58,10 +59,14 @@ async def phase1_endpoint(request: QueryRequest):
         return {"response": "ERROR: Modelo de Fase 1 no cargado.", "details": {"status": "todo"}}
     
     # TODO: Usar la función de inferencia de Fase 1
-    # response_text = generate_reasoning(request.prompt, MODEL, TOKENIZER)
-    response_text = f"Placeholder Fase 1 para: {request.prompt}" # TODO Remove
+    response_text = generate_reasoning(request.prompt, MODEL, TOKENIZER)
+    print("Response Text:", response_text)
+    try:
+        reasoning, response = response_text.split("ASSISTANT:")[1].split("Final answer:")
+    except:
+        reasoning, response = response_text, response_text
     return {
-        "response": response_text, "trace": [{"step": 0, "content": response_text}], "details": {"stage": "sft_grpo"}
+        "response": response, "trace": [{"step": 0, "content": reasoning}], "details": {"stage": "sft_grpo"}
     }
 
 
@@ -74,15 +79,16 @@ async def phase2_endpoint(request: QueryRequest):
     """
     # 1. Simular generación del modelo (o usar el real si ya sabe usar tools)
     # model_output_simulated = '''... Thought: Necesito la calculadora. Action: '''
-    
+    tool_result = run_agent_loop(MODEL, request.prompt, TOKENIZER)
+
     # 2. Usar el handler de Fase 2
     # TODO: Descomentar
     # tool_result = parse_and_execute_tool_call(model_output_simulated)
 
-    tool_result = "Placeholder: Resultado de herramienta (Fase 2) no implementado."
+    # tool_result = "Placeholder: Resultado de herramienta (Fase 2) no implementado."
     
     if tool_result:
-        return {"response": f"Tool execution result: {tool_result}", "details": {"tool_called": True}}
+        return {"response": f"Tool execution result: {tool_result[-1]['content'].replace('</s>', '')}", "details": {"tool_called": True}, "trace": tool_result[1:]}
     else:
         return {"response": "No tool call detected or needed.", "details": {"tool_called": False}}
 
@@ -91,16 +97,34 @@ async def phase2_endpoint(request: QueryRequest):
 @app.post("/phase3/rag", response_model=GenericResponse, tags=["Fase 3"])
 async def phase3_endpoint(request: QueryRequest):
     """
-    Evalúa el RAG. Debe recuperar contexto de los documentos y responder.
+    Evalúa el RAG. Recupera contexto de ChromaDB y genera una respuesta.
     """
-    # TODO: Implementar lógica RAG
+    if not RAG_ENGINE:
+        return {"response": "ERROR: Motor RAG no inicializado.", "details": {"status": "error"}}
+
     # 1. Recuperar contexto
-    # context_list = retrieve_context(request.prompt)
-    # 2. Formatear prompt
-    # rag_prompt = format_rag_prompt(request.prompt, context_list)
-    # 3. Generar con el modelo (opcional, o devolver solo el contexto recuperado para evaluar)
-    
-    return {"response": "Placeholder Fase 3 (RAG)", "details": {"retrieved_docs": ["doc1_placeholder", "doc2_placeholder"]}}
+    context_list = RAG_ENGINE.retrieve_context(request.prompt, top_k=5, similarity_threshold=0.75)
+
+    # 2. Formatear prompt con el contexto recuperado
+    rag_prompt = RAG_ENGINE.format_rag_prompt(request.prompt, context_list)
+
+    # 3. Generar respuesta con el modelo
+    if MODEL and TOKENIZER:
+        response_text = generate_reasoning(rag_prompt, MODEL, TOKENIZER)
+        try:
+            response_text = response_text.split("ASSISTANT:")[-1].strip()
+        except:
+            pass
+    else:
+        response_text = "Modelo no disponible. Contexto recuperado correctamente."
+
+    retrieved_docs = [{"text": ctx["text"][:200] + "...", "label": ctx["label"], "distance": ctx["distance"]} for ctx in context_list]
+
+    return {
+        "response": response_text,
+        "trace": [{"step": i, "content": f"[{ctx['label']}] {ctx['text'][:150]}..."} for i, ctx in enumerate(context_list)],
+        "details": {"retrieved_docs": retrieved_docs, "num_results": len(context_list)}
+    }
 
 
 # --- FASE 4: Agente ReAct ---
@@ -113,11 +137,11 @@ async def phase4_endpoint(request: QueryRequest):
         return {"final_answer": "ERROR: Agente no inicializado.", "trace": []}
 
     # TODO: Ejecutar agente
-    # result = AGENT.run(request.prompt)
-    result = {"final_answer": "Placeholder Fase 4 Agent", "trace": [{"step": 0, "content": "..."}]} # TODO remove
+    result = AGENT.run(request.prompt)
+    # result = {"final_answer": "Placeholder Fase 4 Agent", "trace": [{"step": 0, "content": "..."}]} # TODO remove
 
     return result
 
 if __name__ == "__main__":
     # Para correr localmente: python api/app.py
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8045)
