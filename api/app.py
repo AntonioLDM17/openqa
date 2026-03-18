@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.rlm.inference import load_rlm_model, generate_reasoning
 from src.tool_use.tool_handler import parse_and_execute_tool_call, run_agent_loop
 from src.rag.rag_engine import RAGEngine
-# from react.agent import ReActAgent
+from src.react.agent import ReActAgent
 
 app = FastAPI(
     title="Práctica Master: Modelos Generativos Profundos",
@@ -33,10 +33,9 @@ async def startup_event():
     MODEL, TOKENIZER = load_rlm_model()
     # Inicializar motor RAG de la Fase 3
     RAG_ENGINE = RAGEngine()
-    # if MODEL:
-    #      AGENT = ReActAgent(MODEL, TOKENIZER)
-    print("Modelos cargados (PLACEHOLDER).")
-
+    if MODEL:
+        AGENT = ReActAgent(MODEL, TOKENIZER)
+    print("Modelos cargados correctamente.")
 
 # --- Modelos de Pydantic para Request/Response ---
 class QueryRequest(BaseModel):
@@ -138,8 +137,8 @@ async def phase4_endpoint(request: QueryRequest):
         return {"final_answer": "ERROR: Agente no inicializado.", "trace": []}
 
     # TODO: Ejecutar agente
-    # result = AGENT.run(request.prompt)
-    result = {"final_answer": "Placeholder Fase 4 Agent", "trace": [{"step": 0, "content": "..."}]} # TODO remove
+    result = AGENT.run(request.prompt)
+    # result = {"final_answer": "Placeholder Fase 4 Agent", "trace": [{"step": 0, "content": "..."}]} # TODO remove
 
     return result
 
