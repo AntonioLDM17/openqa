@@ -2,7 +2,7 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-# Cambiad este nombre si finalmente usamos otro checkpoint
+# Cambiad este nombre si finalmente usáis otro checkpoint
 FIN_MODEL_NAME = "SUFE-AIFLM-Lab/Fin-R1"
 
 
@@ -37,9 +37,24 @@ def load_fin_model(model_name: str = FIN_MODEL_NAME):
     return model, tokenizer
 
 
-def _build_prompt(prompt: str) -> str:
+def _build_prompt_with_chat_template(prompt: str, tokenizer) -> str | None:
     """
-    Construye un prompt simple y consistente.
+    Intenta construir el prompt usando la chat template del tokenizer.
+    """
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        return tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+    except Exception:
+        return None
+
+
+def _build_fallback_prompt(prompt: str) -> str:
+    """
+    Fallback simple si el tokenizer no soporta chat template.
     """
     return f"USER: {prompt}\nASSISTANT:"
 
@@ -66,8 +81,13 @@ def generate_financial_reasoning(
     Returns:
         Texto generado
     """
-    text = _build_prompt(prompt)
+    text = _build_prompt_with_chat_template(prompt, tokenizer)
+    if text is None:
+        text = _build_fallback_prompt(prompt)
+
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
+
+    input_length = inputs["input_ids"].shape[1]
 
     generate_kwargs = {
         "max_new_tokens": max_new_tokens,
@@ -82,8 +102,17 @@ def generate_financial_reasoning(
     with torch.inference_mode():
         outputs = model.generate(**inputs, **generate_kwargs)
 
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return response
+    generated_tokens = outputs[0][input_length:]
+    generated_text = tokenizer.decode(generated_tokens, skip_special_tokens=True)
+
+    full_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    # Devuelve un formato consistente con el resto del proyecto
+    if "ASSISTANT:" not in generated_text:
+        return f"ASSISTANT: {generated_text.strip()}"
+
+    # Si por lo que sea ya viene marcado, lo devolvemos tal cual
+    return generated_text if generated_text.strip() else full_text
 
 
 if __name__ == "__main__":

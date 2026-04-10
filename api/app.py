@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uvicorn
 import sys
 import os
@@ -31,6 +31,9 @@ AGENT = None
 RAG_ENGINE = None
 INVESTMENT_SYSTEM = None
 
+# Cargar el sistema legacy solo si se activa explícitamente
+ENABLE_LEGACY_REACT = os.getenv("ENABLE_LEGACY_REACT", "false").lower() == "true"
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -49,15 +52,11 @@ async def startup_event():
     # Motor RAG
     RAG_ENGINE = RAGEngine()
 
-    # Agente ReAct antiguo (fase 4)
-    if GENERAL_MODEL and GENERAL_TOKENIZER:
-        AGENT = ReActAgent(GENERAL_MODEL, GENERAL_TOKENIZER)
-
     # Sistema multiagente nuevo
     if (
-        GENERAL_MODEL and GENERAL_TOKENIZER and
-        FIN_MODEL and FIN_TOKENIZER and
-        RAG_ENGINE
+        GENERAL_MODEL is not None and GENERAL_TOKENIZER is not None and
+        FIN_MODEL is not None and FIN_TOKENIZER is not None and
+        RAG_ENGINE is not None
     ):
         INVESTMENT_SYSTEM = InvestmentMultiAgentSystem(
             general_model=GENERAL_MODEL,
@@ -66,6 +65,13 @@ async def startup_event():
             fin_tokenizer=FIN_TOKENIZER,
             rag_engine=RAG_ENGINE,
         )
+
+    # Agente ReAct antiguo (opcional)
+    if ENABLE_LEGACY_REACT and GENERAL_MODEL is not None and GENERAL_TOKENIZER is not None:
+        AGENT = ReActAgent(GENERAL_MODEL, GENERAL_TOKENIZER)
+        print("Agente legacy ReAct cargado.")
+    else:
+        print("Agente legacy ReAct desactivado.")
 
     print("Modelos cargados correctamente.")
 
@@ -77,8 +83,8 @@ class QueryRequest(BaseModel):
 
 class GenericResponse(BaseModel):
     response: str
-    trace: list[dict] = []
-    details: dict = {}
+    trace: list[dict] = Field(default_factory=list)
+    details: dict = Field(default_factory=dict)
 
 
 # ================= ENDPOINTS DE EVALUACIÓN =================
@@ -89,7 +95,7 @@ async def phase1_endpoint(request: QueryRequest):
     """
     Evalúa el modelo RLM. Debe devolver la respuesta con el razonamiento (CoT) visible.
     """
-    if not GENERAL_MODEL or not GENERAL_TOKENIZER:
+    if GENERAL_MODEL is None or GENERAL_TOKENIZER is None:
         return {
             "response": "ERROR: Modelo de Fase 1 no cargado.",
             "details": {"status": "todo"},
@@ -108,8 +114,8 @@ async def phase1_endpoint(request: QueryRequest):
         reasoning, response = response_text, response_text
 
     return {
-        "response": response,
-        "trace": [{"step": 0, "content": reasoning}],
+        "response": response.strip(),
+        "trace": [{"step": 0, "content": reasoning.strip()}],
         "details": {"stage": "sft_grpo"},
     }
 
@@ -121,7 +127,7 @@ async def phase2_endpoint(request: QueryRequest):
     Evalúa la capacidad de llamar herramientas.
     Si el prompt requiere una herramienta, debe devolver la ejecución simulada.
     """
-    if not GENERAL_MODEL or not GENERAL_TOKENIZER:
+    if GENERAL_MODEL is None or GENERAL_TOKENIZER is None:
         return {
             "response": "ERROR: Modelo no cargado.",
             "details": {"status": "error"},
@@ -148,24 +154,21 @@ async def phase3_endpoint(request: QueryRequest):
     """
     Evalúa el RAG. Recupera contexto de ChromaDB y genera una respuesta.
     """
-    if not RAG_ENGINE:
+    if RAG_ENGINE is None:
         return {
             "response": "ERROR: Motor RAG no inicializado.",
             "details": {"status": "error"},
         }
 
-    # 1. Recuperar contexto
     context_list = RAG_ENGINE.retrieve_context(
         request.prompt,
         top_k=5,
         similarity_threshold=0.75
     )
 
-    # 2. Formatear prompt con el contexto recuperado
     rag_prompt = RAG_ENGINE.format_rag_prompt(request.prompt, context_list)
 
-    # 3. Generar respuesta con el modelo general
-    if GENERAL_MODEL and GENERAL_TOKENIZER:
+    if GENERAL_MODEL is not None and GENERAL_TOKENIZER is not None:
         response_text = generate_general_reasoning(
             rag_prompt,
             GENERAL_MODEL,
@@ -200,15 +203,15 @@ async def phase3_endpoint(request: QueryRequest):
     }
 
 
-# --- FASE 4: Agente ReAct ---
+# --- FASE 4: Agente ReAct legacy ---
 @app.post("/phase4/agent", tags=["Fase 4"])
 async def phase4_endpoint(request: QueryRequest):
     """
-    Evalúa el agente completo. Devuelve la respuesta final y la traza de ejecución.
+    Evalúa el agente ReAct legacy. Solo está disponible si ENABLE_LEGACY_REACT=true.
     """
-    if not AGENT:
+    if AGENT is None:
         return {
-            "final_answer": "ERROR: Agente no inicializado.",
+            "final_answer": "ERROR: Agente legacy no inicializado. Activa ENABLE_LEGACY_REACT=true si quieres usarlo.",
             "trace": [],
         }
 
@@ -222,7 +225,7 @@ async def investment_recommendation_endpoint(request: QueryRequest):
     """
     Ejecuta el sistema multiagente de recomendación de inversiones.
     """
-    if not INVESTMENT_SYSTEM:
+    if INVESTMENT_SYSTEM is None:
         return {
             "final_answer": "ERROR: Sistema multiagente no inicializado.",
             "trace": [],
