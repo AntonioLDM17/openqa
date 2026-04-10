@@ -1,236 +1,229 @@
-# OpenQA — Reasoning + Tools + RAG Agent
+# OpenQA — Multi-Agent Investment Recommendation System
 
-An end-to-end open-domain question-answering system built on **Qwen 2.5-7B-Instruct**, combining chain-of-thought **reasoning** (fine-tuned via SFT + GRPO), **tool use** (calculator, web search, financial APIs), and **RAG** (ChromaDB over Spanish Wikipedia articles). Exposed through a **FastAPI** evaluation API and runnable as a standalone interactive agent.
+Sistema de recomendación de inversiones basado en múltiples agentes, construido sobre modelos generativos, herramientas externas y Retrieval-Augmented Generation (RAG).
+
+Este proyecto extiende la práctica original (Reasoning + Tools + RAG) y la convierte en un **sistema multiagente estructurado**, donde cada agente tiene un rol claro dentro del proceso de toma de decisiones.
 
 ---
 
-## Project Structure
+## 🧠 Arquitectura del sistema
 
-```
+El sistema divide el problema en etapas:
+
+```text
+Usuario
+  ↓
+Orchestrator Agent
+  ↓
+Market Intelligence Agent
+  ├─ stock_price
+  ├─ company_fundamentals
+  ├─ company_events
+  ├─ internet_search
+  └─ RAG
+  ↓
+Recommendation Agent (Fin-R1)
+  ↓
+Critic / Risk Agent
+  ↓
+Respuesta final
+````
+
+### Roles de los agentes
+
+* **Orchestrator Agent**
+
+  * Interpreta la query del usuario
+  * Extrae empresa, ticker, perfil de riesgo y horizonte
+
+* **Market Intelligence Agent**
+
+  * Obtiene datos objetivos del mercado
+  * Usa tools + RAG
+  * Genera un informe estructurado
+
+* **Recommendation Agent (Fin-R1)**
+
+  * Construye una tesis de inversión
+  * Usa un modelo especializado en razonamiento financiero
+
+* **Critic / Risk Agent**
+
+  * Verifica que la recomendación esté bien fundamentada
+  * Evalúa riesgos
+  * Decide si hay suficiente evidencia
+
+---
+
+## 📂 Estructura del proyecto
+
+```text
 openqa/
-├── README.md                  # This file
-├── requirements.txt           # Python dependencies
-├── Dockerfile                 # CUDA 12.1 container image
-├── docker-compose.yml         # Docker Compose service (GPU, volumes, port 8045)
+├── README.md
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
 │
 ├── api/
-│   └── app.py                 # FastAPI server with per-phase evaluation endpoints
+│   └── app.py
 │
 └── src/
-    ├── __init__.py
-    ├── main.py                # Unified agent loop (Reasoning + Tools + RAG)
+    ├── main.py
     │
-    ├── rlm/                   # Phase 1 — Reasoning Language Model
-    │   ├── config.py          # LoRA hyperparameters
-    │   ├── train_sft.py       # Supervised Fine-Tuning (SFT) with GSM8K
-    │   ├── train_grpo.py      # Group Relative Policy Optimization (GRPO) on SFT checkpoint
-    │   ├── inference.py       # Model loading & generation (HuggingFace + Ollama)
-    │   ├── eval_phase1_adapters.py  # Compare SFT vs GRPO accuracy on GSM8K
-    │   └── weights/           # Saved LoRA adapter checkpoints
+    ├── agents/
+    │   ├── orchestrator_agent.py
+    │   ├── market_intelligence_agent.py
+    │   ├── recommendation_agent.py
+    │   ├── critic_risk_agent.py
+    │   └── investment_multiagent_system.py
     │
-    ├── tool_use/              # Phase 2 — Tool Use
-    │   ├── tools.py           # Tool implementations (calculator, search, finance)
-    │   └── tool_handler.py    # JSON parsing, tool dispatch, and ReAct agent loop
+    ├── models/
+    │   ├── general_model.py
+    │   └── fin_model.py
     │
-    └── rag/                   # Phase 3 — Retrieval-Augmented Generation
-        ├── load_dataset.py    # Load WikiCAT_esv2 (Economía) into ChromaDB
-        ├── rag_engine.py      # RAGEngine class — query, retrieve, format context
-        └── chroma_db/         # Persisted ChromaDB vector store (auto-generated)
+    ├── rlm/
+    ├── tool_use/
+    ├── rag/
+    └── react/   # legacy
 ```
 
 ---
 
-## Module Descriptions
+## ⚙️ Modelos utilizados
 
-### `src/rlm/` — Reasoning Language Model (Phase 1)
+El sistema utiliza **dos modelos distintos**:
 
-Fine-tunes **Qwen 2.5-7B-Instruct** to perform step-by-step chain-of-thought (CoT) reasoning on math problems.
+* **Modelo general**
 
-| File | Purpose |
-|------|---------|
-| `config.py` | Defines LoRA parameters (`r=10`, `lora_alpha=8`, task `QUESTION_ANS`). |
-| `train_sft.py` | Supervised Fine-Tuning on the **GSM8K** dataset. Trains the model to produce `<think>…</think>` reasoning followed by a `Final answer:`. Uses `SFTTrainer` from TRL with LoRA. |
-| `train_grpo.py` | **GRPO** reinforcement-learning stage. Loads the SFT adapter, samples `N=4` responses per question, computes a correctness reward, normalises advantages, and applies a REINFORCE-style update. |
-| `inference.py` | Loads the trained model (base + LoRA adapter) for inference. Also provides an **Ollama wrapper** to run lightweight local models (e.g. `llama3.2`, `qwen2.5:3b`) for quick testing without GPU. |
-| `eval_phase1_adapters.py` | Evaluation script that compares SFT vs GRPO adapters on GSM8K accuracy (exact match of extracted numbers). |
+  * Orchestrator + Critic
+  * Basado en el modelo entrenado en la práctica
 
----
+* **Modelo financiero (Fin-R1)**
 
-### `src/tool_use/` — Tool Use (Phase 2)
+  * Solo para el Recommendation Agent
+  * Especializado en análisis financiero
 
-Gives the model the ability to call external tools via JSON-formatted function calls.
+Esto permite separar:
 
-| File | Purpose |
-|------|---------|
-| `tools.py` | **5 tool implementations** using LangChain's `@tool` decorator: `calculator` (via `numexpr`), `internet_search` (via Tavily), `company_fundamentals` (SEC EDGAR), `company_events` (SEC 8-K filings), `stock_price` (Alpha Vantage). |
-| `tool_handler.py` | Defines tool schemas, parses model output for JSON tool calls (`{"nombre": "...", "argumentos": {...}}`), dispatches execution, and runs a **ReAct agent loop** (generate → detect tool → execute → inject result → re-generate). |
+* lógica general
+* razonamiento financiero específico
 
 ---
 
-### `src/rag/` — Retrieval-Augmented Generation (Phase 3)
+## 🔌 API disponible
 
-Adds a knowledge base from Spanish Wikipedia articles (Economics domain) to ground model answers with real documents.
+### Endpoints de la práctica
 
-| File | Purpose |
-|------|---------|
-| `load_dataset.py` | Downloads the **PlanTL-GOB-ES/WikiCAT_esv2** dataset from HuggingFace, filters for the **Economía** category (label 5), and batches inserts into a **ChromaDB** persistent collection using `sentence-transformers/all-MiniLM-L6-v2` embeddings. |
-| `rag_engine.py` | `RAGEngine` class: connects to the persisted ChromaDB collection, performs cosine-similarity retrieval (`retrieve_context`), and provides `format_rag_prompt` to inject retrieved documents into the LLM prompt. |
+* `POST /phase1/reasoning`
+* `POST /phase2/tools`
+* `POST /phase3/rag`
 
----
+### Endpoint principal del proyecto
 
-### `src/main.py` — Unified Agent (Phase 4)
+* `POST /investment/recommendation`
 
-The orchestrator that combines all three capabilities in a single agent loop:
+#### Ejemplo:
 
-1. **RAG retrieval** — queries ChromaDB for relevant economy documents and injects them as context.
-2. **Model generation** — uses the fine-tuned RLM (or Ollama) to generate a response that may include reasoning and/or a tool call.
-3. **Tool execution** — if a tool call is detected, executes it and feeds the result back to the model.
-4. Iterates up to `max_iterations` until the model produces a final answer.
-
----
-
-### `api/app.py` — FastAPI Evaluation API
-
-Exposes four phase-specific endpoints for testing and grading:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/phase1/reasoning` | POST | Evaluates CoT reasoning. Returns the reasoning trace and final answer. |
-| `/phase2/tools` | POST | Evaluates tool calling. Runs the ReAct agent loop and returns the tool execution trace. |
-| `/phase3/rag` | POST | Evaluates RAG. Retrieves context from ChromaDB, generates an answer, and returns retrieved docs. |
-| `/phase4/agent` | POST | (Placeholder) Full ReAct agent evaluation. |
-
-All endpoints accept `{"prompt": "..."}` and return `{"response": "...", "trace": [...], "details": {...}}`.
-
----
-
-## Environment Variables
-
-Create a `.env` file in the project root with:
-
-```env
-TAVILY_API_KEY=tvly-xxxxxxxxxxxx        # Required for internet_search tool
-ALPHAVANTAGE_API_KEY=xxxxxxxxxx          # Required for stock_price tool
+```json
+{
+  "prompt": "Analiza Nvidia y dime si tendría sentido entrar ahora para un inversor moderado a 12 meses."
+}
 ```
 
 ---
 
-## Setup & Usage
+## ▶️ Cómo ejecutar
 
-### 1. Install Dependencies
+### 1. Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Load the RAG Knowledge Base
+---
 
-This downloads the WikiCAT_esv2 dataset and indexes the **Economía** articles into ChromaDB. **Must be run once** before using RAG:
+### 2. Cargar RAG (muy importante)
 
 ```bash
 python -m src.rag.load_dataset
 ```
 
-### 3. Run the Unified Agent (CLI)
+---
 
-#### With the full HuggingFace model (requires GPU + LoRA weights):
+### 3. Ejecutar sistema multiagente (CLI)
 
 ```bash
 python -m src.main
 ```
 
-#### With a lightweight Ollama model (local testing, no GPU needed):
+---
 
-```bash
-# Default model (llama3.2)
-python -m src.main --ollama
-
-# Specify a model
-python -m src.main --ollama qwen2.5:3b
-```
-
-> **Note:** Ollama must be running locally (`ollama serve`).
-
-### 4. Run the FastAPI Evaluation Server
+### 4. Ejecutar API
 
 ```bash
 python api/app.py
 ```
 
-The server starts on `http://0.0.0.0:8045`. Use the auto-generated docs at `/docs` to test endpoints.
+Acceso:
+
+* API: [http://0.0.0.0:8045](http://0.0.0.0:8045)
+* Docs: [http://0.0.0.0:8045/docs](http://0.0.0.0:8045/docs)
 
 ---
 
-## Training Pipeline
+## 🔑 Variables de entorno
 
-These steps run inside the Docker container (GPU required):
+Crear `.env`:
 
-### Phase 1a — Supervised Fine-Tuning (SFT)
-
-```bash
-python src/rlm/train_sft.py
-```
-
-Trains a LoRA adapter on **GSM8K** using the `<think>…</think>` format. Saves weights to `src/rlm/weights/sft_lora_gsm8k/`.
-
-### Phase 1b — GRPO Reinforcement Learning
-
-```bash
-python src/rlm/train_grpo.py
-```
-
-Loads the SFT adapter and applies GRPO to improve reasoning accuracy. Saves to `src/rlm/weights/final_rlm_lora/`.
-
-### Evaluate SFT vs GRPO
-
-```bash
-python src/rlm/eval_phase1_adapters.py --n 100 --split test
-```
-
-Compares both adapters on GSM8K accuracy and reports the delta.
-
----
-
-## Docker
-
-### Build & Run
-
-```bash
-docker compose build
-docker compose up -d
-```
-
-### Enter the Container
-
-```bash
-docker exec -it openqa-apa bash
-```
-
-From inside the container, run any of the above commands (`python -m src.main`, `python api/app.py`, etc.).
-
-The container exposes port **8045** and mounts `./src`, `./.env`, and `./weights` as volumes.
-
----
-
-## Full Pipeline Summary
-
-```
-1.  pip install -r requirements.txt          # Install deps
-2.  python src/rlm/train_sft.py              # Train SFT adapter (GPU)
-3.  python src/rlm/train_grpo.py             # Train GRPO adapter (GPU)
-4.  python src/rlm/eval_phase1_adapters.py   # Evaluate adapters
-5.  python -m src.rag.load_dataset           # Index RAG knowledge base
-6.  python -m src.main                       # Run unified agent (CLI)
-7.  python api/app.py                        # Start evaluation API
+```env
+TAVILY_API_KEY=xxxx
+ALPHAVANTAGE_API_KEY=xxxx
+ENABLE_LEGACY_REACT=false
 ```
 
 ---
 
-## Tech Stack
+## ⚠️ Filosofía del sistema
 
-- **Base Model:** Qwen/Qwen2.5-7B-Instruct
-- **Fine-Tuning:** LoRA (PEFT) + SFTTrainer (TRL) + Custom GRPO
-- **Vector Store:** ChromaDB with SentenceTransformer embeddings
-- **Tools:** numexpr, Tavily, SEC EDGAR, Alpha Vantage
-- **API:** FastAPI + Uvicorn
-- **Infra:** Docker + NVIDIA CUDA 12.1
+Este sistema **NO da recomendaciones ciegas**.
+
+Si:
+
+* no identifica la empresa
+* no hay datos suficientes
+* o la recomendación no está bien fundamentada
+
+→ responde de forma prudente.
+
+Esto es clave para el proyecto.
+
+---
+
+## 📊 Qué se puede evaluar
+
+Este sistema permite comparar:
+
+* Single agent vs multiagente
+* Con vs sin RAG
+* Con vs sin critic agent
+
+Y medir:
+
+* coherencia
+* grounding
+* cobertura de riesgos
+* calidad de la recomendación
+
+---
+
+## 🚀 Estado del proyecto
+
+* Arquitectura multiagente implementada
+* Integración con tools y RAG
+* Fin-R1 integrado como recommendation agent
+* Sistema legacy mantenido solo para comparación
+
+El flujo principal ahora es el sistema multiagente.
+
+---
+

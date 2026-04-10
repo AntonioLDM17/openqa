@@ -19,7 +19,7 @@ from src.agents.investment_multiagent_system import InvestmentMultiAgentSystem
 
 app = FastAPI(
     title="Práctica Master: Modelos Generativos Profundos",
-    description="API para evaluar las 4 fases de la práctica y el sistema multiagente de inversión."
+    description="API para evaluar las 4 fases de la práctica y el sistema multiagente de recomendación de inversiones."
 )
 
 # --- Variables Globales (Modelos) ---
@@ -236,5 +236,4 @@ async def investment_recommendation_endpoint(request: QueryRequest):
 
 
 if __name__ == "__main__":
-    # Para correr localmente: python api/app.py
     uvicorn.run(app, host="0.0.0.0", port=8045)
